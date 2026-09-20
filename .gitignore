@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# DuckDB / Parquet / local generated data
+*.duckdb*
+*.ddb
+*.wal
+*.tmp/
+duckdb_tmp/
+**/duckdb_tmp/
+*.parquet
