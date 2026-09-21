@@ -225,3 +225,4 @@ __marimo__/
 duckdb_tmp/
 **/duckdb_tmp/
 *.parquet
+*.gz
