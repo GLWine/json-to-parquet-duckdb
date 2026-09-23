@@ -1,4 +1,4 @@
-# json-to-parquet-duckdb
+# json.gz-to-parquet-duckdb
 
 Pipeline Python per convertire file JSON compatti `.json.gz` in Parquet usando DuckDB.
 
