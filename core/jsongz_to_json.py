@@ -1,11 +1,71 @@
 import gzip
 import os
 import shutil
-import subprocess
 import time
 from pathlib import Path
+from typing import BinaryIO
 
 from tqdm import tqdm
+
+VALID_ENGINES = ["isal", "rapidgzip", "pgzip", "gzip"]
+BUFFER_SIZE = 8 * 1024 * 1024  # 8 MB
+
+
+def _get_decompressor_stream(
+    engine_type: str, open_file_handle: BinaryIO, cpu_count: int
+) -> BinaryIO:
+    """Istanzia e restituisce il file-stream decompresso in base al motore richiesto."""
+    if engine_type == "isal":
+        from isal import igzip
+
+        return igzip.IGzipFile(fileobj=open_file_handle, mode="rb")  # type: ignore[return-value]
+
+    if engine_type == "gzip":
+        return gzip.GzipFile(fileobj=open_file_handle, mode="rb")  # type: ignore[return-value]
+
+    if engine_type == "pgzip":
+        import pgzip
+
+        return pgzip.PgzipFile(
+            fileobj=open_file_handle,
+            mode="rb",
+            thread=cpu_count,
+            blocksize=BUFFER_SIZE,
+        )  # type: ignore[return-value]
+
+    # rapidgzip
+    import rapidgzip
+
+    return rapidgzip.open(open_file_handle, parallelization=cpu_count)
+
+
+def _decompress_with_progress(
+    f_in: BinaryIO,
+    f_out: BinaryIO,
+    open_file_handle: BinaryIO,
+    gz_size: int,
+    engine_type: str,
+    half_width: int,
+) -> None:
+    """Esegue il ciclo di lettura/scrittura a blocchi aggiornando la progress bar tqdm."""
+    with (
+        f_in,
+        tqdm(
+            total=gz_size,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            desc=f"Lettura .gz ({engine_type})",
+            ncols=half_width,
+            leave=True,
+        ) as pbar,
+    ):
+        while True:
+            chunk = f_in.read(BUFFER_SIZE)
+            if not chunk:
+                break
+            f_out.write(chunk)
+            pbar.update(open_file_handle.tell() - pbar.n)
 
 
 def decompress_jsongz(
@@ -19,136 +79,29 @@ def decompress_jsongz(
     Restituisce un dizionario contenente le metriche di esecuzione.
     """
     engine_type = engine.lower()
-    valid_engines = ["isal", "rapidgzip", "pgzip", "pigz", "gzip"]
-    if engine_type not in valid_engines:
+    if engine_type not in VALID_ENGINES:
         raise ValueError(
-            f"Motore '{engine}' non valido. Scegli tra: {', '.join(valid_engines)}."
+            f"Motore '{engine}' non valido. Scegli tra: {', '.join(VALID_ENGINES)}."
         )
 
     terminal_width = shutil.get_terminal_size().columns
     half_width = max(20, terminal_width // 2)
     gz_size = gz_path.stat().st_size
+    cpu_count = os.cpu_count() or 4
     start_time = time.time()
 
-    # ---------------------------------------------------------
-    # CASO SPECIALIZZATO: pigz (Stream via stdin)
-    # ---------------------------------------------------------
-    if engine_type == "pigz":
-        # .parent (cartella core) -> .parent (radice del progetto) -> lib / pigz.exe
-        project_root = Path(__file__).resolve().parent.parent
-        pigz_exe = project_root / "lib" / "pigz.exe"
+    with (
+        open(gz_path, "rb") as open_file_handle,
+        open(json_path, "wb") as f_out,
+    ):
+        f_in = _get_decompressor_stream(
+            engine_type, open_file_handle, cpu_count
+        )
+        _decompress_with_progress(
+            f_in, f_out, open_file_handle, gz_size, engine_type, half_width
+        )
 
-        if not pigz_exe.exists():
-            system_pigz = shutil.which("pigz")
-            if system_pigz:
-                pigz_cmd = system_pigz
-            else:
-                raise FileNotFoundError(
-                    f"Eseguibile pigz non trovato in '{pigz_exe}' e non presente nel PATH di sistema."
-                )
-        else:
-            pigz_cmd = str(pigz_exe)
-
-        cmd = [pigz_cmd, "-d", "-c"]
-        buffer_size = 8 * 1024 * 1024
-
-        with (
-            open(gz_path, "rb") as f_in,
-            open(json_path, "wb") as f_out,
-            tqdm(
-                total=gz_size,
-                unit="B",
-                unit_scale=True,
-                unit_divisor=1024,
-                desc=f"Lettura .gz ({engine_type})",
-                ncols=half_width,
-                leave=True,
-            ) as pbar,
-        ):
-            process = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=f_out,
-                stderr=subprocess.PIPE,
-            )
-
-            while True:
-                chunk = f_in.read(buffer_size)
-                if not chunk:
-                    break
-                if process.stdin:
-                    process.stdin.write(chunk)
-                pbar.update(len(chunk))
-
-            if process.stdin:
-                process.stdin.close()
-            process.wait()
-
-            if process.returncode != 0:
-                stderr_msg = (
-                    process.stderr.read().decode("utf-8", errors="replace")
-                    if process.stderr
-                    else ""
-                )
-                raise RuntimeError(
-                    f"Errore durante l'esecuzione di pigz: {stderr_msg}"
-                )
-
-    # ---------------------------------------------------------
-    # CASI LIBRERIE PYTHON: isal, pgzip, rapidgzip, gzip
-    # ---------------------------------------------------------
-    else:
-        cpu_count = os.cpu_count() or 4
-        buffer_size = 8 * 1024 * 1024
-
-        with (
-            open(gz_path, "rb") as open_file_handle,
-            open(json_path, "wb") as f_out,
-        ):
-            if engine_type == "isal":
-                from isal import igzip
-
-                f_in = igzip.IGzipFile(fileobj=open_file_handle, mode="rb")
-            elif engine_type == "gzip":
-                f_in = gzip.GzipFile(fileobj=open_file_handle, mode="rb")
-            elif engine_type == "pgzip":
-                import pgzip
-
-                f_in = pgzip.PgzipFile(
-                    fileobj=open_file_handle,
-                    mode="rb",
-                    thread=cpu_count,
-                    blocksize=buffer_size,
-                )
-            else:  # rapidgzip
-                import rapidgzip
-
-                f_in = rapidgzip.open(
-                    open_file_handle, parallelization=cpu_count
-                )
-
-            with (
-                f_in,
-                tqdm(
-                    total=gz_size,
-                    unit="B",
-                    unit_scale=True,
-                    unit_divisor=1024,
-                    desc=f"Lettura .gz ({engine_type})",
-                    ncols=half_width,
-                    leave=True,
-                ) as pbar,
-            ):
-                while True:
-                    chunk = f_in.read(buffer_size)
-                    if not chunk:
-                        break
-                    f_out.write(chunk)
-                    pbar.update(open_file_handle.tell() - pbar.n)
-
-    # ---------------------------------------------------------
-    # CALCOLO METRICHE E RITORNO DATI
-    # ---------------------------------------------------------
+    # Calcolo metriche di esecuzione
     elapsed = time.time() - start_time
     json_size = json_path.stat().st_size
     final_size_gb = json_size / (1024**3)
