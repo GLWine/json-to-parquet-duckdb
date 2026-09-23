@@ -1,3 +1,10 @@
+"""Pipeline CLI ad alte prestazioni per conversione da .json.gz a .parquet.
+
+Questo modulo orchestra l'intero ciclo di vita della conversione dati:
+1. Decompressione ottimizzata di file archiviati .json.gz tramite motori multithread.
+2. Trasformazione da formato JSON a Parquet ad alte prestazioni sfruttando DuckDB.
+"""
+
 import argparse
 from pathlib import Path
 from typing import NamedTuple
@@ -6,6 +13,15 @@ from core import convert_json_to_parquet, decompress_jsongz
 
 
 class PipelinePaths(NamedTuple):
+    """Mantiene i percorsi dei file e delle cartelle della pipeline.
+
+    Attributes:
+        gz_path: Percorso del file .json.gz sorgente.
+        output_dir: Cartella di destinazione per i file generati.
+        json_out_path: Percorso del file .json intermedio estratto.
+        parquet_out_path: Percorso del file .parquet finale generato.
+    """
+
     gz_path: Path
     output_dir: Path
     json_out_path: Path
@@ -13,7 +29,11 @@ class PipelinePaths(NamedTuple):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Configura e restituisce il parser degli argomenti da linea di comando."""
+    """Configura e restituisce il parser degli argomenti CLI.
+
+    Returns:
+        Istanza di ArgumentParser configurata con tutte le opzioni di linea di comando.
+    """
 
     def create_formatter(prog: str) -> argparse.HelpFormatter:
         return argparse.HelpFormatter(prog, max_help_position=40)
@@ -50,7 +70,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def prepare_pipeline_paths(gz_file_arg: str) -> PipelinePaths:
-    """Risolve i percorsi di input/output e crea la directory di destinazione."""
+    """Risolve i percorsi di input/output e crea la directory di destinazione.
+
+    Args:
+        gz_file_arg: Percorso stringa fornito dall'utente per il file .json.gz.
+
+    Returns:
+        Struttura PipelinePaths contenente tutti i percorsi assoluti validati.
+
+    Raises:
+        FileNotFoundError: Se il file .json.gz fornito non viene trovato nel filesystem.
+    """
     gz_path = Path(gz_file_arg).resolve()
     if not gz_path.exists():
         raise FileNotFoundError(f"Il file '{gz_path}' non esiste.")
@@ -73,8 +103,16 @@ def prepare_pipeline_paths(gz_file_arg: str) -> PipelinePaths:
 def run_decompression_step(
     paths: PipelinePaths, engine: str, step_prefix: str
 ) -> dict | None:
-    """Esegue lo step di decompressione da .json.gz a .json."""
+    """Esegue la fase di decompressione da file .json.gz a .json.
 
+    Args:
+        paths: Istanza di PipelinePaths contenente i percorsi di I/O.
+        engine: Nome del motore di decompressione selezionato dall'utente.
+        step_prefix: Prefisso visuale per i log di avanzamento (es. '[1/2]').
+
+    Returns:
+        Dizionario contenente le metriche di esecuzione o None se la fase fallisce.
+    """
     print(
         f"\n{step_prefix} Estrazione {paths.gz_path.name} in corso [Motore: {engine.upper()}]..."
     )
@@ -96,8 +134,15 @@ def run_decompression_step(
 
 
 def run_parquet_step(paths: PipelinePaths, step_prefix: str) -> dict | None:
-    """Esegue lo step di conversione da .json a .parquet tramite DuckDB."""
+    """Esegue la fase di conversione da file .json a formato columnar .parquet.
 
+    Args:
+        paths: Istanza di PipelinePaths contenente i percorsi di I/O.
+        step_prefix: Prefisso visuale per i log di avanzamento (es. '[2/2]').
+
+    Returns:
+        Dizionario contenente le metriche della conversione o None se la fase fallisce.
+    """
     print(f"\n{step_prefix} Conversione JSON -> Parquet con DuckDB in corso...")
     try:
         metrics = convert_json_to_parquet(
@@ -116,6 +161,7 @@ def run_parquet_step(paths: PipelinePaths, step_prefix: str) -> dict | None:
 
 
 def main() -> None:
+    """Punto di ingresso principale della CLI per la pipeline di conversione."""
     parser = build_parser()
     args = parser.parse_args()
 
@@ -132,7 +178,7 @@ def main() -> None:
     print(f" Cartella di output: {paths.output_dir}")
     print("=" * 70)
 
-    # FASE 1: Decompressione
+    # Fase 1: Decompressione JSON.GZ in JSON
     gz_metrics = run_decompression_step(
         paths, engine=args.engine, step_prefix=f"[1/{total_steps}]"
     )
@@ -146,16 +192,16 @@ def main() -> None:
         print("=" * 70 + "\n")
         return
 
-    # FASE 2: Conversione Parquet
+    # Fase 2: Conversione JSON in Parquet tramite DuckDB
     pq_metrics = run_parquet_step(paths, step_prefix=f"[2/{total_steps}]")
     if not pq_metrics:
         return
 
-    # Cleanup del file JSON intermedio
+    # Rimozione sicura del file JSON intermedio se l'utente non richiede la persistenza
     if not args.keep_json and paths.json_out_path.exists():
         paths.json_out_path.unlink()
 
-    # RIEPILOGO FINALE
+    # Riepilogo complessivo delle prestazioni
     total_time = gz_metrics["elapsed"] + pq_metrics["elapsed"]
     print("\n" + "=" * 70)
     print(" PIPELINE COMPLETATA CON SUCCESSO")
