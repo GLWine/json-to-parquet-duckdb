@@ -225,4 +225,9 @@ __marimo__/
 duckdb_tmp/
 **/duckdb_tmp/
 *.parquet
+*.json
 *.gz
+
+# vscode folder
+.vscode/
+**/.vscode/
