@@ -1,22 +1,24 @@
 # json-to-parquet-duckdb
 
-CLI Python per trasformare file JSON compatti `.json.gz` in Parquet tramite DuckDB, con una pipeline in due fasi:
+Pipeline Python per convertire file JSON compatti `.json.gz` in Parquet usando DuckDB.
+
+La trasformazione avviene in due passaggi:
 
 1. decompressione del gzip in un file JSON intermedio;
-2. import del JSON in DuckDB e esportazione diretta a Parquet.
+2. lettura del JSON con DuckDB ed esportazione diretta in Parquet.
 
-Il progetto è pensato per dataset grandi e per lavorare senza dover caricare tutto in RAM.
+Il progetto è pensato per dataset di grandi dimensioni e per evitare di caricare tutto in memoria.
 
-## Funzionalità
+## Funzionalità attuali
 
-- Supporto diretto a file `.json.gz`
-- Decompressione con più motori: `isal`, `rapidgzip`, `pgzip`, `pigz`, `gzip`
-- Esecuzione opzionale solo della fase di decompressione
-- Possibilità di mantenere il file JSON intermedio
-- Output automatico in una cartella dedicata al nome del file sorgente
-- Import JSON con `read_json_auto`, `union_by_name = true`, `ignore_errors = true`
-- Metriche di tempo, velocità e rapporto di compressione
-- Progress bar durante la decompressione e il lavoro di DuckDB
+- supporto diretto a file `.json.gz`;
+- decompressione con più motori disponibili: `isal`, `rapidgzip`, `pgzip`, `gzip`;
+- esecuzione facoltativa solo della fase di decompressione;
+- persistenza opzionale del file JSON intermedio tramite `--keep-json`;
+- output automatico in una cartella dedicata al nome del file sorgente;
+- import JSON con `read_json_auto`, `sample_size = -1`, `union_by_name = true`, `ignore_errors = true`;
+- metriche di tempo, velocità e rapporto di compressione;
+- progress bar durante decompressione e conversione.
 
 ## Requisiti
 
@@ -27,8 +29,16 @@ Il progetto è pensato per dataset grandi e per lavorare senza dover caricare tu
   - `isal`
   - `rapidgzip`
   - `pgzip`
-  - `pigz` (o eseguibile nel PATH / `lib/pigz.exe` su Windows)
-  - `gzip` (stdlib di Python)
+  - `gzip` (standard library di Python)
+
+Il file `requirements.txt` include i pacchetti principali del progetto:
+
+```bash
+isal>=1.1.0
+rapidgzip>=0.14.0
+pgzip>=0.3.0
+tqdm>=4.66.0
+```
 
 ## Installazione
 
@@ -39,7 +49,7 @@ pip install -r requirements.txt
 pip install duckdb
 ```
 
-Se vuoi usare i motori extra, installa anche i pacchetti corrispondenti:
+Se vuoi usare i motori extra installali esplicitamente:
 
 ```bash
 pip install isal rapidgzip pgzip
@@ -53,10 +63,10 @@ Esempio base:
 python main.py .\galaxy_7days.json.gz
 ```
 
-Questo crea una cartella chiamata `galaxy_7days/` accanto al file sorgente e genera:
+Il comando crea una cartella con lo stesso nome del file senza estensione, ad esempio `galaxy_7days/`, e produce:
 
-- `galaxy_7days/galaxy_7days.json` (file intermedio, eliminato di default)
-- `galaxy_7days/galaxy_7days.parquet` (output finale)
+- `galaxy_7days/galaxy_7days.json` (file intermedio, eliminato di default);
+- `galaxy_7days/galaxy_7days.parquet` (output finale).
 
 ### Selezione del motore di decompressione
 
@@ -64,12 +74,11 @@ Questo crea una cartella chiamata `galaxy_7days/` accanto al file sorgente e gen
 python main.py .\galaxy_7days.json.gz --engine rapidgzip
 ```
 
-Motori disponibili:
+Motori supportati:
 
 - `isal`
 - `rapidgzip`
 - `pgzip`
-- `pigz`
 - `gzip`
 
 ### Solo decompressione
@@ -78,59 +87,72 @@ Motori disponibili:
 python main.py .\galaxy_7days.json.gz --decompress-only
 ```
 
-In questo modo viene creato solo il file JSON intermedio senza convertire in Parquet.
+In questo caso viene generato solo il file JSON intermedio e la conversione in Parquet non viene eseguita.
 
-### Mantenere il JSON intermedio
+### Mantenere il file JSON intermedio
 
 ```bash
 python main.py .\galaxy_7days.json.gz --keep-json
 ```
 
-Il JSON non viene rimosso dopo la conversione.
+Con questa opzione il file `.json` non viene rimosso dopo aver generato il Parquet.
 
 ## Pipeline attuale
 
-Il comando principale avvia questa workflow:
+La CLI esegue oggi questa sequenza:
 
 1. verifica che il file `.json.gz` esista;
-2. crea una cartella di output con il nome del file senza estensione;
-3. decompone il gzip in un file `.json` intermedio;
-4. legge il JSON con DuckDB usando `read_json_auto`;
-5. esporta il risultato in Parquet usando `COPY ... TO ... FORMAT PARQUET`;
-6. rimuove il JSON intermedio se `--keep-json` non è stato usato.
+2. crea la directory di output nel percorso del file sorgente usando il nome base senza estensione;
+3. decompone il file gzip in un JSON intermedio;
+4. legge il JSON con DuckDB tramite `read_json_auto`;
+5. esporta i dati in Parquet tramite `COPY ... TO ... FORMAT PARQUET`;
+6. elimina il JSON intermedio se `--keep-json` non è specificato.
 
-## Output e struttura
+## Configurazione DuckDB
 
-Un esempio pratico:
+La conversione imposta in modo implicito:
+
+- `threads = numero di CPU disponibili`;
+- `enable_progress_bar = true`;
+- `sample_size = -1`;
+- `union_by_name = true`;
+- `ignore_errors = true`.
+
+## Struttura del progetto
 
 ```text
 project/
 ├── main.py
+├── README.md
+├── requirements.txt
 ├── core/
+│   ├── __init__.py
 │   ├── jsongz_to_json.py
 │   └── json_to_parquet.py
+├── test/
+│   └── benchmark_engines.py
 ├── galaxy_7days/
 │   ├── galaxy_7days.json
 │   └── galaxy_7days.parquet
 └── ...
 ```
 
-## Configurazione impostata
+## Benchmark di confronto tra motori
 
-Il progetto configura DuckDB in modo da lavorare bene su dataset grandi:
+Il progetto include anche uno script per confrontare i tempi dei diversi motori di decompressione:
 
-- `threads = numero di CPU disponibili`
-- `enable_progress_bar = true`
-- `sample_size = -1`
-- `union_by_name = true`
-- `ignore_errors = true`
+```bash
+python .\test\benchmark_engines.py .\galaxy_7days.json.gz
+```
+
+Lo script esegue test sequenziali per `isal`, `rapidgzip`, `pgzip` e `gzip`, ordina i risultati dal più veloce al più lento e stampa una tabella comparativa.
 
 ## Note
 
-- Il file sorgente deve essere leggibile localmente dal processo Python.
-- La barra di avanzamento dipende dal comportamento di DuckDB e del runtime Python, quindi può non essere perfettamente granularizzata in tutti i casi.
-- L'ordine delle righe del JSON originale non è garantito come ordine di output del Parquet.
-- Il JSON intermedio viene rimosso per impostazione predefinita per alleggerire lo spazio su disco.
+- il file sorgente deve essere leggibile localmente dal processo Python;
+- la progress bar dipende dal terminale e dal runtime di esecuzione, quindi può non essere perfettamente granularizzata in tutti i casi;
+- l'ordine delle righe del JSON originale non è garantito come ordine di output del Parquet;
+- il file JSON intermedio viene rimosso per impostazione predefinita per risparmiare spazio su disco.
 
 ## Licenza
 
