@@ -1,0 +1,7 @@
+# Acceleration engines for GZIP decompression
+isal>=1.1.0
+rapidgzip>=0.14.0
+pgzip>=0.3.0
+
+# Terminal UI & Progress Monitoring
+tqdm>=4.66.0
