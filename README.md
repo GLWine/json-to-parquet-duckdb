@@ -34,6 +34,7 @@ Il progetto è pensato per dataset di grandi dimensioni e per evitare di caricar
 Il file `requirements.txt` include i pacchetti principali del progetto:
 
 ```bash
+duckdb>=1.1.0
 isal>=1.1.0
 rapidgzip>=0.14.0
 pgzip>=0.3.0
@@ -46,13 +47,6 @@ Dal root del progetto:
 
 ```bash
 pip install -r requirements.txt
-pip install duckdb
-```
-
-Se vuoi usare i motori extra installali esplicitamente:
-
-```bash
-pip install isal rapidgzip pgzip
 ```
 
 ## Uso

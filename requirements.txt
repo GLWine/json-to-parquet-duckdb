@@ -1,3 +1,6 @@
+# Analytics engine for Parquet conversion
+duckdb>=1.1.0
+
 # Acceleration engines for GZIP decompression
 isal>=1.1.0
 rapidgzip>=0.14.0
