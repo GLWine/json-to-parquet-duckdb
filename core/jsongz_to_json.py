@@ -1,9 +1,15 @@
+"""Modulo per la decompressione ad alte prestazioni di archivi .json.gz.
+
+Supporta molteplici motori di decompressione multithread e ad alta velocità
+(isal, rapidgzip, pgzip, gzip) con tracciamento dell'avanzamento tramite tqdm.
+"""
+
 import gzip
 import os
 import shutil
 import time
 from pathlib import Path
-from typing import BinaryIO
+from typing import IO, Any
 
 from tqdm import tqdm
 
@@ -12,16 +18,25 @@ BUFFER_SIZE = 8 * 1024 * 1024  # 8 MB
 
 
 def _get_decompressor_stream(
-    engine_type: str, open_file_handle: BinaryIO, cpu_count: int
-) -> BinaryIO:
-    """Istanzia e restituisce il file-stream decompresso in base al motore richiesto."""
+    engine_type: str, open_file_handle: IO[bytes], cpu_count: int
+) -> Any:
+    """Istanzia e restituisce il file-stream decompresso in base al motore richiesto.
+
+    Args:
+        engine_type: Il nome del motore da utilizzare ('isal', 'rapidgzip', 'pgzip', 'gzip').
+        open_file_handle: Stream binario aperto in sola lettura per il file .gz.
+        cpu_count: Numero di thread/core CPU da assegnare per il parallelismo.
+
+    Returns:
+        Un oggetto stream decorato pronto per la lettura binaria decompresso.
+    """
     if engine_type == "isal":
         from isal import igzip
 
-        return igzip.IGzipFile(fileobj=open_file_handle, mode="rb")  # type: ignore[return-value]
+        return igzip.IGzipFile(fileobj=open_file_handle, mode="rb")
 
     if engine_type == "gzip":
-        return gzip.GzipFile(fileobj=open_file_handle, mode="rb")  # type: ignore[return-value]
+        return gzip.GzipFile(fileobj=open_file_handle, mode="rb")
 
     if engine_type == "pgzip":
         import pgzip
@@ -31,7 +46,7 @@ def _get_decompressor_stream(
             mode="rb",
             thread=cpu_count,
             blocksize=BUFFER_SIZE,
-        )  # type: ignore[return-value]
+        )
 
     # rapidgzip
     import rapidgzip
@@ -40,14 +55,23 @@ def _get_decompressor_stream(
 
 
 def _decompress_with_progress(
-    f_in: BinaryIO,
-    f_out: BinaryIO,
-    open_file_handle: BinaryIO,
+    f_in: Any,
+    f_out: IO[bytes],
+    open_file_handle: IO[bytes],
     gz_size: int,
     engine_type: str,
     half_width: int,
 ) -> None:
-    """Esegue il ciclo di lettura/scrittura a blocchi aggiornando la progress bar tqdm."""
+    """Esegue il ciclo di lettura/scrittura a blocchi aggiornando la progress bar tqdm.
+
+    Args:
+        f_in: Stream di decompressione in lettura.
+        f_out: Stream binario di destinazione in scrittura.
+        open_file_handle: Stream del file sorgente .gz per tracciare i byte letti.
+        gz_size: Dimensione totale in byte del file .gz sorgente.
+        engine_type: Nome del motore in esecuzione (utilizzato nella descrizione).
+        half_width: Larghezza in caratteri per la formattazione della progress bar.
+    """
     with (
         f_in,
         tqdm(
@@ -76,13 +100,30 @@ def decompress_jsongz(
 ) -> dict:
     """Decomprime un file .json.gz in un file .json usando il motore specificato.
 
-    Restituisce un dizionario contenente le metriche di esecuzione.
+    Args:
+        gz_path: Percorso assoluto o relativo del file .json.gz sorgente.
+        json_path: Percorso assoluto o relativo del file .json estratto di destinazione.
+        engine: Motore di decompressione da utilizzare ('isal', 'rapidgzip', 'pgzip', 'gzip').
+        show_metrics: Se True, stampa a schermo il riepilogo delle prestazioni.
+
+    Returns:
+        Dizionario contenente le metriche di esecuzione (tempo, dimensioni, velocità, ratio).
+
+    Raises:
+        ValueError: Se il motore specificato non rientra tra quelli supportati.
+        FileNotFoundError: Se il file .json.gz sorgente non esiste nel filesystem.
     """
     engine_type = engine.lower()
     if engine_type not in VALID_ENGINES:
         raise ValueError(
             f"Motore '{engine}' non valido. Scegli tra: {', '.join(VALID_ENGINES)}."
         )
+
+    gz_path = Path(gz_path).resolve()
+    json_path = Path(json_path).resolve()
+
+    if not gz_path.exists():
+        raise FileNotFoundError(f"File non trovato: {gz_path}")
 
     terminal_width = shutil.get_terminal_size().columns
     half_width = max(20, terminal_width // 2)
@@ -103,7 +144,7 @@ def decompress_jsongz(
 
     # Calcolo metriche di esecuzione
     elapsed = time.time() - start_time
-    json_size = json_path.stat().st_size
+    json_size = json_path.stat().st_size if json_path.exists() else 0
     final_size_gb = json_size / (1024**3)
     speed = (json_size / (1024**2)) / elapsed if elapsed > 0 else 0
     ratio = json_size / gz_size if gz_size > 0 else 0
