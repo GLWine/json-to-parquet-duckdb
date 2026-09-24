@@ -4,6 +4,7 @@ Supporta molteplici motori di decompressione multithread e ad alta velocità
 (isal, rapidgzip, pgzip, gzip) con tracciamento dell'avanzamento tramite tqdm.
 """
 
+import contextlib
 import gzip
 import os
 import shutil
@@ -54,6 +55,24 @@ def _get_decompressor_stream(
     return rapidgzip.open(open_file_handle, parallelization=cpu_count)
 
 
+def _as_context_manager(stream: Any) -> Any:
+    """Adatta uno stream al protocollo context manager, se non lo supporta nativamente.
+
+    Args:
+        stream: Oggetto stream restituito dal motore di decompressione, che potrebbe
+            o meno implementare `__enter__`/`__exit__`.
+
+    Returns:
+        Un context manager che garantisce, quando possibile, la chiusura dello stream
+        all'uscita dal blocco `with`.
+    """
+    if hasattr(stream, "__enter__") and hasattr(stream, "__exit__"):
+        return stream
+    if hasattr(stream, "close"):
+        return contextlib.closing(stream)
+    return contextlib.nullcontext(stream)
+
+
 def _decompress_with_progress(
     f_in: Any,
     f_out: IO[bytes],
@@ -73,7 +92,7 @@ def _decompress_with_progress(
         half_width: Larghezza in caratteri per la formattazione della progress bar.
     """
     with (
-        f_in,
+        _as_context_manager(f_in),
         tqdm(
             total=gz_size,
             unit="B",
