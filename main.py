@@ -6,10 +6,33 @@ Questo modulo orchestra l'intero ciclo di vita della conversione dati:
 """
 
 import argparse
+import importlib.util
 from pathlib import Path
 from typing import NamedTuple
 
 from core import convert_json_to_parquet, decompress_jsongz
+
+ENGINE_MODULES = {
+    "isal": "isal",
+    "rapidgzip": "rapidgzip",
+    "pgzip": "pgzip",
+    "gzip": None,  # modulo stdlib, sempre disponibile
+}
+
+
+def check_engine_available(engine: str) -> bool:
+    """Verifica se il modulo Python richiesto dal motore scelto è installato.
+
+    Args:
+        engine: Nome del motore di decompressione richiesto dall'utente.
+
+    Returns:
+        True se il modulo è disponibile (o non richiesto, es. gzip), False altrimenti.
+    """
+    module_name = ENGINE_MODULES.get(engine.lower())
+    if module_name is None:
+        return True
+    return importlib.util.find_spec(module_name) is not None
 
 
 class PipelinePaths(NamedTuple):
@@ -66,6 +89,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Mantiene il file .json intermedio dopo la creazione del .parquet",
     )
+    parser.add_argument(
+        "-c",
+        "--count-discarded",
+        action="store_true",
+        help="Conta gli oggetti JSON scartati durante la conversione",
+    )
     return parser
 
 
@@ -73,19 +102,29 @@ def prepare_pipeline_paths(gz_file_arg: str) -> PipelinePaths:
     """Risolve i percorsi di input/output e crea la directory di destinazione.
 
     Args:
-        gz_file_arg: Percorso stringa fornito dall'utente per il file .json.gz.
+        gz_file_arg: Percorso stringa fornito dall'utente per il file .gz o .json.gz.
 
     Returns:
         Struttura PipelinePaths contenente tutti i percorsi assoluti validati.
 
     Raises:
-        FileNotFoundError: Se il file .json.gz fornito non viene trovato nel filesystem.
+        FileNotFoundError: Se il file sorgente non viene trovato nel filesystem.
+        ValueError: Se l'estensione del file non è .gz né .json.gz.
     """
     gz_path = Path(gz_file_arg).resolve()
     if not gz_path.exists():
         raise FileNotFoundError(f"Il file '{gz_path}' non esiste.")
 
-    base_name = gz_path.name.split(".")[0]
+    name = gz_path.name
+    if name.endswith(".json.gz"):
+        base_name = name.removesuffix(".json.gz")
+    elif name.endswith(".gz"):
+        base_name = name.removesuffix(".gz")
+    else:
+        raise ValueError(
+            f"Estensione non supportata per '{name}': atteso un file .gz o .json.gz."
+        )
+
     output_dir = gz_path.parent / base_name
     output_dir.mkdir(exist_ok=True)
 
@@ -125,15 +164,19 @@ def run_decompression_step(
         )
         print(
             f"{step_prefix} Estrazione ({engine.lower()}) completata in {metrics['elapsed']:.2f}s."
-            f"\n      Dati estratti: {metrics['final_size_gb']:.2f} GB | Ratio: {metrics['ratio']:.2f}x | Velocità reale: {metrics['speed_mb']:.1f} MB/s"
+            f"\n Dati estratti: {metrics['final_size_gb']:.2f} GB | Ratio: {metrics['ratio']:.2f}x | Velocità reale: {metrics['speed_mb']:.1f} MB/s"
         )
         return metrics
-    except (RuntimeError, OSError, ValueError) as err:
+    except (RuntimeError, OSError, ValueError, ImportError) as err:
         print(f"{step_prefix} [ERRORE FATALE] Decompressione fallita: {err}")
         return None
 
 
-def run_parquet_step(paths: PipelinePaths, step_prefix: str) -> dict | None:
+def run_parquet_step(
+    paths: PipelinePaths,
+    step_prefix: str,
+    count_discarded: bool = False,
+) -> dict | None:
     """Esegue la fase di conversione da file .json a formato columnar .parquet.
 
     Args:
@@ -146,7 +189,10 @@ def run_parquet_step(paths: PipelinePaths, step_prefix: str) -> dict | None:
     print(f"\n{step_prefix} Conversione JSON -> Parquet con DuckDB in corso...")
     try:
         metrics = convert_json_to_parquet(
-            paths.json_out_path, paths.parquet_out_path, show_metrics=False
+            paths.json_out_path,
+            paths.parquet_out_path,
+            show_metrics=False,
+            count_discarded=count_discarded,
         )
         print(
             f"{step_prefix} Conversione Parquet completata con successo in {metrics['elapsed']:.2f}s."
@@ -163,9 +209,18 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    if not check_engine_available(args.engine):
+        missing_module = ENGINE_MODULES[args.engine.lower()]
+        print(
+            f"[ERRORE] Il motore '{args.engine}' richiede il pacchetto "
+            f"'{missing_module}', non installato.\n"
+            f" Installa le dipendenze con: pip install -r requirements.txt"
+        )
+        return
+
     try:
         paths = prepare_pipeline_paths(args.gz_file)
-    except FileNotFoundError as err:
+    except (FileNotFoundError, ValueError) as err:
         print(f"[ERRORE] {err}")
         return
 
@@ -191,7 +246,9 @@ def main() -> None:
         return
 
     # Fase 2: Conversione JSON in Parquet tramite DuckDB
-    pq_metrics = run_parquet_step(paths, step_prefix=f"[2/{total_steps}]")
+    pq_metrics = run_parquet_step(
+        paths, step_prefix=f"[2/{total_steps}]", count_discarded=args.count_discarded
+    )
     if not pq_metrics:
         return
 
