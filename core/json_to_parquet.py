@@ -40,7 +40,10 @@ def _calculate_metrics(json_path: Path, parquet_path: Path, elapsed: float) -> d
 
 
 def convert_json_to_parquet(
-    json_path: Path, parquet_path: Path, show_metrics: bool = True
+    json_path: Path,
+    parquet_path: Path,
+    show_metrics: bool = True,
+    count_discarded: bool = False,
 ) -> dict:
     """Converte un file JSON estratto in formato Parquet ottimizzato tramite DuckDB.
 
