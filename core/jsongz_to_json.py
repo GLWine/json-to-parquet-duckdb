@@ -135,9 +135,7 @@ def decompress_jsongz(
         open(gz_path, "rb") as open_file_handle,
         open(json_path, "wb") as f_out,
     ):
-        f_in = _get_decompressor_stream(
-            engine_type, open_file_handle, cpu_count
-        )
+        f_in = _get_decompressor_stream(engine_type, open_file_handle, cpu_count)
         _decompress_with_progress(
             f_in, f_out, open_file_handle, gz_size, engine_type, half_width
         )

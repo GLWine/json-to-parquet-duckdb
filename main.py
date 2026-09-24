@@ -154,9 +154,7 @@ def run_parquet_step(paths: PipelinePaths, step_prefix: str) -> dict | None:
         )
         return metrics
     except (RuntimeError, OSError, ValueError) as err:
-        print(
-            f"{step_prefix} [ERRORE FATALE] Conversione Parquet fallita: {err}"
-        )
+        print(f"{step_prefix} [ERRORE FATALE] Conversione Parquet fallita: {err}")
         return None
 
 

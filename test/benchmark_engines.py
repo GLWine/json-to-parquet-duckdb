@@ -76,9 +76,7 @@ def _print_benchmark_summary(results: list[tuple[str, dict[str, Any]]]) -> None:
     print("\n" + "=" * 70)
     print(" RISULTATI BENCHMARK (Ordinati dal più veloce)")
     print("=" * 70)
-    print(
-        f"{'MOTORE':<12} | {'TEMPO (s)':<10} | {'VELOCITÀ (MB/s)':<16} | {'GAP'}"
-    )
+    print(f"{'MOTORE':<12} | {'TEMPO (s)':<10} | {'VELOCITÀ (MB/s)':<16} | {'GAP'}")
     print("-" * 70)
 
     for engine, m in results:
@@ -87,9 +85,7 @@ def _print_benchmark_summary(results: list[tuple[str, dict[str, Any]]]) -> None:
             if m["elapsed"] == best_time
             else f"{m['elapsed'] / best_time:.2f}x più lento"
         )
-        print(
-            f"{engine:<12} | {m['elapsed']:<10.2f} | {m['speed_mb']:<16.1f} | {gap}"
-        )
+        print(f"{engine:<12} | {m['elapsed']:<10.2f} | {m['speed_mb']:<16.1f} | {gap}")
 
     print("=" * 70 + "\n")
 

@@ -11,9 +11,7 @@ from pathlib import Path
 import duckdb
 
 
-def _calculate_metrics(
-    json_path: Path, parquet_path: Path, elapsed: float
-) -> dict:
+def _calculate_metrics(json_path: Path, parquet_path: Path, elapsed: float) -> dict:
     """Calcola le metriche di velocità, dimensione e compressione della conversione.
 
     Args:
