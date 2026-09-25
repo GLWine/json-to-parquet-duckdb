@@ -164,7 +164,7 @@ def run_decompression_step(
         )
         print(
             f"{step_prefix} Estrazione ({engine.lower()}) completata in {metrics['elapsed']:.2f}s."
-            f"\n Dati estratti: {metrics['final_size_gb']:.2f} GB | Ratio: {metrics['ratio']:.2f}x | Velocità reale: {metrics['speed_mb']:.1f} MB/s"
+            f"\n Dati estratti: {metrics['final_size_gb']:.2f} GB"
         )
         return metrics
     except (RuntimeError, OSError, ValueError, ImportError) as err:
@@ -196,7 +196,7 @@ def run_parquet_step(
         )
         print(
             f"{step_prefix} Conversione Parquet completata con successo in {metrics['elapsed']:.2f}s."
-            f"\n      Output: {metrics['parquet_size_mb']:.2f} MB | Compressione vs JSON: {metrics['ratio']:.1f}x | Velocità lettura: {metrics['speed_mb']:.1f} MB/s"
+            f"\n      Output: {metrics['parquet_size_mb']:.2f} MB"
         )
         return metrics
     except (RuntimeError, OSError, ValueError) as err:
