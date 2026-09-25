@@ -27,15 +27,11 @@ def _calculate_metrics(json_path: Path, parquet_path: Path, elapsed: float) -> d
 
     json_size_gb = json_size / (1024**3)
     parquet_size_mb = parquet_size / (1024**2)
-    speed = (json_size / (1024**2)) / elapsed if elapsed > 0 else 0
-    ratio = json_size / parquet_size if parquet_size > 0 else 0
 
     return {
         "elapsed": elapsed,
         "json_size_gb": json_size_gb,
         "parquet_size_mb": parquet_size_mb,
-        "speed_mb": speed,
-        "ratio": ratio,
     }
 
 
@@ -53,7 +49,7 @@ def convert_json_to_parquet(
         show_metrics: Se True, stampa a schermo il riepilogo delle prestazioni.
 
     Returns:
-        Dizionario contenente le metriche di conversione (tempo, dimensioni, velocità, ratio).
+        Dizionario contenente le metriche di conversione (tempo e dimensioni).
 
     Raises:
         FileNotFoundError: Se il file JSON sorgente non esiste nel filesystem.
@@ -100,8 +96,6 @@ def convert_json_to_parquet(
         print(
             f"   Conversione Parquet completata in {metrics['elapsed']:.2f}s."
             f"\n   Output: {metrics['parquet_size_mb']:.2f} MB | "
-            f"Compressione vs JSON: {metrics['ratio']:.1f}x | "
-            f"Velocità lettura: {metrics['speed_mb']:.1f} MB/s"
         )
 
     return metrics

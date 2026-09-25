@@ -101,6 +101,7 @@ def _decompress_with_progress(
             desc=f"Lettura .gz ({engine_type})",
             ncols=half_width,
             leave=True,
+            bar_format="{l_bar}{bar}| {n_fmt}{unit} [{elapsed}]",
         ) as pbar,
     ):
         while True:
@@ -126,7 +127,7 @@ def decompress_jsongz(
         show_metrics: Se True, stampa a schermo il riepilogo delle prestazioni.
 
     Returns:
-        Dizionario contenente le metriche di esecuzione (tempo, dimensioni, velocità, ratio).
+        Dizionario contenente le metriche di esecuzione (tempo e dimensioni).
 
     Raises:
         ValueError: Se il motore specificato non rientra tra quelli supportati.
@@ -163,19 +164,15 @@ def decompress_jsongz(
     elapsed = time.time() - start_time
     json_size = json_path.stat().st_size if json_path.exists() else 0
     final_size_gb = json_size / (1024**3)
-    speed = (json_size / (1024**2)) / elapsed if elapsed > 0 else 0
-    ratio = json_size / gz_size if gz_size > 0 else 0
 
     if show_metrics:
         print(
             f"      Estrazione ({engine_type}) completata in {elapsed:.2f}s."
-            f"\n      Dati estratti: {final_size_gb:.2f} GB | Ratio: {ratio:.2f}x | Velocità reale: {speed:.1f} MB/s"
+            f"\n      Dati estratti: {final_size_gb:.2f} GB"
         )
 
     return {
         "elapsed": elapsed,
         "json_size": json_size,
         "final_size_gb": final_size_gb,
-        "speed_mb": speed,
-        "ratio": ratio,
     }
