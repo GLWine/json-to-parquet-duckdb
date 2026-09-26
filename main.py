@@ -89,12 +89,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Mantiene il file .json intermedio dopo la creazione del .parquet",
     )
-    parser.add_argument(
-        "-c",
-        "--count-discarded",
-        action="store_true",
-        help="Conta gli oggetti JSON scartati durante la conversione",
-    )
     return parser
 
 
@@ -175,7 +169,6 @@ def run_decompression_step(
 def run_parquet_step(
     paths: PipelinePaths,
     step_prefix: str,
-    count_discarded: bool = False,
 ) -> dict | None:
     """Esegue la fase di conversione da file .json a formato columnar .parquet.
 
@@ -192,7 +185,6 @@ def run_parquet_step(
             paths.json_out_path,
             paths.parquet_out_path,
             show_metrics=False,
-            count_discarded=count_discarded,
         )
         print(
             f"{step_prefix} Conversione Parquet completata con successo in {metrics['elapsed']:.2f}s."
@@ -246,9 +238,7 @@ def main() -> None:
         return
 
     # Fase 2: Conversione JSON in Parquet tramite DuckDB
-    pq_metrics = run_parquet_step(
-        paths, step_prefix=f"[2/{total_steps}]", count_discarded=args.count_discarded
-    )
+    pq_metrics = run_parquet_step(paths, step_prefix=f"[2/{total_steps}]")
     if not pq_metrics:
         return
 
